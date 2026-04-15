@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQUARE VAULT PRO</title>
+    <script src="https://use.fontawesome.com/releases/v6.3.0/js/all.js" crossorigin="anonymous"></script>
+    <link href="css/styles.css" rel="stylesheet">
+    <style>
+        body { margin: 0; background: #1a1a1a; color: white; font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; padding-top: 72px; box-sizing: border-box; }
+        canvas { background: #87CEEB; border: 4px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .ui { position: absolute; top: 95px; text-align: center; width: 100%; pointer-events: none; z-index: 5; }
+        #speed-bar-container { width: 300px; height: 20px; background: rgba(0,0,0,0.5); margin: 8px auto; border: 2px solid #fff; position: relative; border-radius: 5px; overflow: hidden; }
+        #speed-bar { height: 100%; width: 0%; background: #e74c3c; }
+        #speed-threshold { position: absolute; top: 0; bottom: 0; width: 3px; background: white; z-index: 2; }
+        #attempt-container { font-size: 24px; color: #e74c3c; font-weight: bold; letter-spacing: 5px; margin-top: 5px; min-height: 30px; }
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; }
+        .game-modal { background: #2c3e50; padding: 40px; border-radius: 15px; border: 3px solid #3498db; max-width: 500px; text-align: center; box-shadow: 0 0 50px rgba(52, 152, 219, 0.3); }
+        h2 { color: #3498db; margin-top: 0; text-transform: uppercase; letter-spacing: 2px; }
+        .instruction-step { text-align: left; margin: 20px 0; line-height: 1.5; }
+        .key { background: #555; padding: 2px 8px; border-radius: 4px; font-family: monospace; }
+        .purple-text { color: #9b59b6; font-weight: bold; }
+        button { background: #3498db; color: white; border: none; padding: 12px 30px; font-size: 18px; border-radius: 5px; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #2980b9; }
+        .goodgame-nav { background: #0f1115; border-bottom: 1px solid #2a2f3a; z-index: 200; }
+        .goodgame-nav .navbar-brand, .goodgame-nav .nav-link { color: #f5f7fa; }
+        .goodgame-nav .nav-link:hover, .goodgame-nav .navbar-brand:hover { color: #7ec8ff; }
+    </style>
+</head>
+<body id="top">
+    <nav class="navbar navbar-expand-lg navbar-dark fixed-top goodgame-nav">
+        <div class="container px-4 px-lg-5">
+            <a class="navbar-brand" href="#top">Square Vault Pro</a>
+            <button class="navbar-toggler navbar-toggler-right" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+                Menu
+                <i class="fas fa-bars"></i>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarResponsive">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="index.html">Professional Page</a></li>
+                    <li class="nav-item"><a class="nav-link" href="from-scratch.html">Pole Vault Page</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div id="overlay">
+        <div class="game-modal">
+            <h2>Square Vault Pro</h2>
+            <div class="instruction-step">
+                <strong>1. Build Speed:</strong> Mash <span class="key">Spacebar</span>. Pass the white line to ensure you have enough height for the vault.
+            </div>
+            <div class="instruction-step">
+                <strong>2. The Plant:</strong> Near the pit, the game slows. Press <span class="key">Spacebar</span> once to stop the needle on the slider.
+            </div>
+            <div class="instruction-step">
+                <strong>3. Miracle Jump:</strong> Stop the needle in the <span class="purple-text">Purple Sliver</span> to clear the bar instantly, even if your speed is too low!
+            </div>
+            <p>Ready to set a new record?</p>
+            <button onclick="startGame()">START JUMPING</button>
+        </div>
+    </div>
+
+    <div class="ui">
+        <h1 id="heightDisplay">Target: 3.00m</h1>
+        <div id="speed-bar-container">
+            <div id="speed-threshold"></div>
+            <div id="speed-bar"></div>
+        </div>
+        <div id="attempt-container"></div>
+        <div id="status">MASH SPACEBAR TO RUN!</div>
+    </div>
+
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const statusDisplay = document.getElementById('status');
+const speedBar = document.getElementById('speed-bar');
+const speedThresholdLine = document.getElementById('speed-threshold');
+const heightDisplay = document.getElementById('heightDisplay');
+const attemptContainer = document.getElementById('attempt-container');
+
+// Constants
+const GROUND_Y = 350;
+const PIT_X = 600;
+const POLE_LENGTH = 120;
+const START_HEIGHT = 3.00;
+const PLANT_X = PIT_X - 10;
+const GRAVITY = 0.25;
+
+// Game State
+let gameActive = false;
+let currentHeight = START_HEIGHT;
+let failures = 0;
+let gameState = 'RUNNING'; 
+let speed = 0;
+let playerX = 50;
+let playerY = GROUND_Y - 30;
+let needleX = 0;
+let inputLocked = false;
+let resultMessage = "";
+
+// Physics Objects
+let barY = 0, barVY = 0, barIsFalling = false, barXOffset = 0;
+let poleX = 0, poleY = 0, poleAngle = 0, poleRotVel = 0, poleXV = 0, poleYV = 0, poleReleased = false;
+
+function startGame() {
+    document.getElementById('overlay').style.display = 'none';
+    gameActive = true;
+    resetAttempt();
+}
+
+function updateAttemptUI() {
+    let xStr = "";
+    for(let i = 0; i < failures; i++) xStr += "X ";
+    attemptContainer.innerText = xStr;
+}
+
+function resetAttempt() {
+    gameState = 'RUNNING';
+    playerX = 50;
+    playerY = GROUND_Y - 30;
+    speed = 0;
+    needleX = 0;
+    inputLocked = false;
+    barIsFalling = false;
+    barVY = 0;
+    barXOffset = 0;
+    barY = GROUND_Y - (currentHeight * 45);
+    poleReleased = false;
+    poleRotVel = 0;
+    statusDisplay.innerText = "MASH SPACEBAR TO RUN!";
+    statusDisplay.style.color = "white";
+    heightDisplay.innerText = `Target: ${currentHeight.toFixed(2)}m`;
+    updateAttemptUI();
+}
+
+window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || inputLocked || !gameActive) return;
+    if (gameState === 'RUNNING') speed = Math.min(speed + 5, 80); 
+    else if (gameState === 'TIMING') calculateJumpParameters();
+    else if (gameState === 'RESULT') resetAttempt();
+});
+
+function calculateJumpParameters() {
+    gameState = 'JUMPING';
+    const reqSpeed = 15 + (currentHeight * 4.5);
+    const isMiracle = (needleX >= 98 && needleX <= 102);
+    
+    let timingScore = (needleX >= 80 && needleX <= 120) ? "perfect" : "fail";
+    if (timingScore === "fail" && ((needleX >= 40 && needleX < 80) || (needleX > 120 && needleX <= 160))) {
+        timingScore = Math.random() > 0.5 ? "perfect" : "fail";
+    }
+
+    if (isMiracle || (speed >= reqSpeed && timingScore === "perfect")) {
+        resultMessage = isMiracle ? "MIRACLE CLEAR!" : "SUCCESS!";
+    } else {
+        failures++;
+        resultMessage = (speed < reqSpeed && timingScore === "perfect") ? "TOO SLOW!" : "BAD TIMING!";
+        if (failures >= 3) resultMessage = "FAILED 3 TIMES - RESET TO 3m";
+    }
+
+    setTimeout(() => {
+        if (resultMessage.includes("SUCCESS") || resultMessage.includes("MIRACLE")) {
+            currentHeight += 0.5;
+            failures = 0;
+        } else if (resultMessage.includes("RESET")) {
+            currentHeight = START_HEIGHT;
+            failures = 0;
+        }
+        gameState = 'RESULT';
+        statusDisplay.innerText = resultMessage + " (Press Space)";
+        if (resultMessage.includes("MIRACLE")) statusDisplay.style.color = "#9b59b6";
+    }, 2000);
+}
+
+function update() {
+    if (!gameActive) return;
+    const reqSpeed = 15 + (currentHeight * 4.5);
+    speedBar.style.width = `${(speed / 80) * 100}%`;
+    speedBar.style.background = speed >= reqSpeed ? "#2ecc71" : "#e74c3c";
+    speedThresholdLine.style.left = `${(reqSpeed / 80) * 100}%`;
+
+    if (barIsFalling) {
+        barVY += GRAVITY; barY += barVY;
+        if (barY > GROUND_Y - 5) { barY = GROUND_Y - 5; barVY *= -0.3; }
+    }
+
+    if (gameState === 'RUNNING') {
+        speed *= 0.998; playerX += speed * 0.15;
+        if (playerX > PIT_X - 250) {
+            gameState = 'PRE_PLANT'; inputLocked = true;
+            statusDisplay.innerText = "LOWERING POLE...";
+            setTimeout(() => { if (gameState === 'PRE_PLANT') { gameState = 'TIMING'; inputLocked = false; statusDisplay.innerText = "PLANT NOW!"; } }, 600);
+        }
+    }
+
+    if (gameState === 'TIMING') {
+        playerX += speed * 0.005; needleX += 4.5;
+        if (needleX >= 200) { calculateJumpParameters(); resultMessage = "TOO LATE!"; }
+    }
+
+    if (gameState === 'JUMPING') {
+        playerX += speed * 0.12;
+        let peakX = PIT_X - 75;
+        let jumpHeight = (resultMessage.includes("SUCCESS") || resultMessage.includes("MIRACLE")) ? (currentHeight * 45) + 35 : (currentHeight * 45) - 10;
+        playerY = (GROUND_Y - 30) - Math.sin((playerX - (PIT_X-250))/350 * Math.PI) * jumpHeight;
+
+        if (!poleReleased && playerX > peakX) {
+            poleReleased = true;
+            poleX = PLANT_X; poleY = GROUND_Y;
+            poleXV = -3; poleYV = -2; poleRotVel = -0.1;
+            poleAngle = Math.atan2((playerY+15)-GROUND_Y, (playerX+15)-PLANT_X);
+        }
+
+        if (!resultMessage.includes("SUCCESS") && !resultMessage.includes("MIRACLE") && !barIsFalling) {
+            if (playerX + 30 > PIT_X && playerX < PIT_X + 100 && playerY + 30 > barY) {
+                barIsFalling = true; barVY = -2; barXOffset = 20;
+            }
+        }
+        if (playerY > GROUND_Y - 30) playerY = GROUND_Y - 30;
+    }
+
+    if (poleReleased) {
+        poleXV *= 0.98; poleYV += GRAVITY;
+        poleX += poleXV; poleY += poleYV; poleAngle += poleRotVel;
+        if (poleY > GROUND_Y) { poleY = GROUND_Y; poleYV = 0; poleXV = 0; poleRotVel = 0; }
+    }
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Environment
+    ctx.fillStyle = '#27ae60'; ctx.fillRect(0, GROUND_Y, canvas.width, 50); // Runway/Grass
+    ctx.fillStyle = '#2980b9'; ctx.fillRect(PIT_X, GROUND_Y - 15, 160, 15); // Padding/Mat
+    ctx.fillStyle = '#333'; ctx.fillRect(PLANT_X - 5, GROUND_Y - 5, 20, 5); // Plant box
+
+    // DRAW STANDARDS (The vertical poles holding the bar)
+    ctx.strokeStyle = '#7f8c8d'; ctx.lineWidth = 6;
+    // Left standard
+    ctx.beginPath();
+    ctx.moveTo(PIT_X - 2, GROUND_Y);
+    ctx.lineTo(PIT_X - 2, GROUND_Y - 300); // Standard goes higher than the bar usually
+    ctx.stroke();
+    // Right standard
+    ctx.beginPath();
+    ctx.moveTo(PIT_X + 162, GROUND_Y);
+    ctx.lineTo(PIT_X + 162, GROUND_Y - 300);
+    ctx.stroke();
+
+    // The Bar (Crossbar)
+    ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(PIT_X + barXOffset, barY); ctx.lineTo(PIT_X + 160 + barXOffset, barY); ctx.stroke();
+
+    let startX = playerX + 15, startY = playerY + 15;
+    ctx.strokeStyle = '#bdc3c7'; ctx.lineWidth = 4;
+
+    if (!poleReleased) {
+        if (gameState === 'RUNNING') {
+            let angle = -Math.PI / 4;
+            ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(startX + Math.cos(angle) * POLE_LENGTH, startY + Math.sin(angle) * POLE_LENGTH); ctx.stroke();
+        } else if (gameState === 'PRE_PLANT' || gameState === 'TIMING') {
+            let angle = Math.atan2(GROUND_Y - startY, PLANT_X - startX);
+            ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(startX + Math.cos(angle) * POLE_LENGTH, startY + Math.sin(angle) * POLE_LENGTH); ctx.stroke();
+        } else if (gameState === 'JUMPING') {
+            ctx.beginPath(); ctx.moveTo(PLANT_X, GROUND_Y); ctx.lineTo(startX, startY); ctx.stroke();
+        }
+    } else {
+        ctx.save();
+        ctx.translate(poleX, poleY);
+        ctx.rotate(poleAngle);
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(POLE_LENGTH, 0); ctx.stroke();
+        ctx.restore();
+    }
+
+    // Player
+    ctx.fillStyle = '#3498db'; ctx.fillRect(playerX, playerY, 30, 30);
+    ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.strokeRect(playerX, playerY, 30, 30);
+
+    if (gameState === 'TIMING') {
+        const bx = canvas.width/2 - 100, by = 150;
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(bx-4, by-4, 208, 38);
+        ctx.fillStyle = 'red'; ctx.fillRect(bx, by, 200, 30);
+        ctx.fillStyle = 'yellow'; ctx.fillRect(bx + 40, by, 120, 30);
+        ctx.fillStyle = 'green'; ctx.fillRect(bx + 80, by, 40, 30);
+        ctx.fillStyle = '#9b59b6'; ctx.fillRect(bx + 98, by, 4, 30);
+        ctx.fillStyle = 'white'; ctx.fillRect(bx + needleX - 2, by - 5, 4, 40);
+    }
+    requestAnimationFrame(() => { update(); draw(); });
+}
+draw();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
